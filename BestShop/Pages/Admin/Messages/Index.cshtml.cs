@@ -1,9 +1,11 @@
+using BestShop.MyHelpers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using System.Data.SqlClient;
 
 namespace BestShop.Pages.Admin.Messages
 {
+    [RequireAuth(RequiredRole = "admin")]
     public class IndexModel : PageModel
     {
         public List<MessageInfo> listMessages = new List<MessageInfo>();

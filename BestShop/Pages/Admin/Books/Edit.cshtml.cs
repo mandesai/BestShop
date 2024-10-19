@@ -1,5 +1,6 @@
 using BestShop.MyHelpers;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using System.ComponentModel.DataAnnotations;
 using System.Data.SqlClient;
@@ -7,8 +8,11 @@ using System.Data.SqlClient;
 namespace BestShop.Pages.Admin.Books
 {
     [RequireAuth(RequiredRole = "admin")]
-    public class CreateModel : PageModel
+    public class EditModel : PageModel
     {
+        [BindProperty]
+        public int Id { get; set; }
+
         [BindProperty]
         [Required(ErrorMessage = "The Title is required")]
         [MaxLength(100, ErrorMessage = "The Title cannot exceed 100 characters")]
@@ -41,15 +45,17 @@ namespace BestShop.Pages.Admin.Books
         public string? Description { get; set; } = "";
 
         [BindProperty]
-        [Required(ErrorMessage = "The Image File is required")]
-        public IFormFile ImageFile { get; set; }
+        public string ImageFileName { get; set; } = "";
+
+        [BindProperty]
+        public IFormFile? ImageFile { get; set; }
 
         public string errorMessage = "";
         public string successMessage = "";
 
         private IWebHostEnvironment webHostEnvironment;
 
-        public CreateModel(IWebHostEnvironment env)
+        public EditModel(IWebHostEnvironment env)
         {
             webHostEnvironment = env;
         }
@@ -57,6 +63,47 @@ namespace BestShop.Pages.Admin.Books
 
         public void OnGet()
         {
+            string requestId = Request.Query["id"];
+
+            try
+            {
+                string connectionString = "Data Source=.\\sqlexpress;Initial Catalog=bestshop;Integrated Security=True";
+
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+
+                    string sql = "SELECT * FROM books WHERE id=@id";
+                    using (SqlCommand command = new SqlCommand(sql, connection))
+                    {
+                        command.Parameters.AddWithValue("@id", requestId);
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            if (reader.Read())
+                            {
+                                Id = reader.GetInt32(0);
+                                Title = reader.GetString(1);
+                                Authors = reader.GetString(2);
+                                ISBN = reader.GetString(3);
+                                NumPages = reader.GetInt32(4);
+                                Price = reader.GetDecimal(5);
+                                Category = reader.GetString(6);
+                                Description = reader.GetString(7);
+                                ImageFileName = reader.GetString(8);
+                            }
+                            else
+                            {
+                                Response.Redirect("/Admin/Books/Index");
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+                Response.Redirect("/Admin/Books/Index");
+            }
         }
 
         public void OnPost()
@@ -71,21 +118,29 @@ namespace BestShop.Pages.Admin.Books
 
             if (Description == null) Description = "";
 
-            // save the image file on the server
-            string newFileName = DateTime.Now.ToString("yyyyMMddHHmmssfff");
-            newFileName += Path.GetExtension(ImageFile.FileName);
-
-            string imageFolder = webHostEnvironment.WebRootPath + "/images/books/";
-
-            string imageFullPath = Path.Combine(imageFolder, newFileName);
-            Console.WriteLine("New image: " + imageFullPath);
-
-            using (var stream = System.IO.File.Create(imageFullPath))
+            // if we have a new ImageFile => upload the new image and delete the old image
+            string newFileName = ImageFileName;
+            if (ImageFile != null)
             {
-                ImageFile.CopyTo(stream);
+                newFileName = DateTime.Now.ToString("yyyyMMddHHmmssfff");
+                newFileName += Path.GetExtension(ImageFile.FileName);
+
+                string imageFolder = webHostEnvironment.WebRootPath + "/images/books/";
+                string imageFullPath = Path.Combine(imageFolder, newFileName);
+                Console.WriteLine("New image (Edit): " + imageFullPath);
+
+                using (var stream = System.IO.File.Create(imageFullPath))
+                {
+                    ImageFile.CopyTo(stream);
+                }
+
+                // delete old image
+                string oldImageFullPath = Path.Combine(imageFolder, ImageFileName);
+                System.IO.File.Delete(oldImageFullPath);
+                Console.WriteLine("Delete Image " + oldImageFullPath);
             }
 
-            // save the new book in the database
+            // update the book data in the database
             try
             {
                 string connectionString = "Data Source=.\\sqlexpress;Initial Catalog=bestshop;Integrated Security=True";
@@ -93,9 +148,9 @@ namespace BestShop.Pages.Admin.Books
                 using (SqlConnection connection = new SqlConnection(connectionString))
                 {
                     connection.Open();
-                    string sql = "INSERT INTO books " +
-                    "(title, authors, isbn, num_pages, price, category, description, image_filename) VALUES " +
-                    "(@title, @authors, @isbn, @num_pages, @price, @category, @description, @image_filename);";
+                    string sql = "UPDATE books SET title=@title, authors=@authors, isbn=@isbn, " +
+                        "num_pages=@num_pages, price=@price, category=@category, " +
+                        "description=@description, image_filename=@image_filename WHERE id=@id;";
 
                     using (SqlCommand command = new SqlCommand(sql, connection))
                     {
@@ -107,6 +162,7 @@ namespace BestShop.Pages.Admin.Books
                         command.Parameters.AddWithValue("@category", Category);
                         command.Parameters.AddWithValue("@description", Description);
                         command.Parameters.AddWithValue("@image_filename", newFileName);
+                        command.Parameters.AddWithValue("@id", Id);
 
                         command.ExecuteNonQuery();
                     }

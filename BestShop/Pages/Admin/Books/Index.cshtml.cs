@@ -1,9 +1,10 @@
+using BestShop.MyHelpers;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using System.Data.SqlClient;
 
 namespace BestShop.Pages.Admin.Books
 {
-    //RequireAuth(RequiredRole = "admin")]
+    [RequireAuth(RequiredRole = "admin")]
     public class IndexModel : PageModel
     {
         public List<BookInfo> listBooks = new List<BookInfo>();
